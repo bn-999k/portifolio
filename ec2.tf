@@ -18,8 +18,8 @@ resource "aws_instance" "ec2_instance" {
               yum install -y docker
               service docker start
               usermod -a -G docker ec2-user
-              docker push gabiiramos1309/apicontainer:${var.github_sha}
-              docker run -d -p 8080:8080 --name api-container gabiiramos1309/apicontainer:${var.github_sha}
+              docker push brunobmarques/apicontainer:${var.github_sha}
+              docker run -d -p 8080:8080 --name api-container brunobmarques/apicontainer:${var.github_sha}
               EOF
 
   tags = {

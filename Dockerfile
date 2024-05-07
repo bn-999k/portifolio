@@ -1,50 +1,54 @@
 FROM alpine:latest as builder
 
-# Atualizando pacotes e instalando dependências
-RUN apk update && \
-    apk add --no-cache wget unzip curl python3 py3-pip
+# Instalando dependências
+RUN apk add --no-cache wget unzip curl build-base libffi-dev openssl-dev
 
-# Instalar Terraform
+# Instalando Terraform
 RUN wget https://releases.hashicorp.com/terraform/1.8.2/terraform_1.8.2_linux_amd64.zip && \
     unzip terraform_1.8.2_linux_amd64.zip && \
-    mv terraform /usr/local/bin/
+    mv terraform /usr/local/bin/ && \
+    rm terraform_1.8.2_linux_amd64.zip
 
-RUN apk add --no-cache python3-dev
+# Configurando diretório de trabalho
+WORKDIR /work
 
-# Instalar awscli
-RUN wget "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -O "awscliv2.zip" && \
-    unzip awscliv2.zip && \
-    ./aws/install -i /usr/local/aws-cli -b /usr/local/bin
-
-WORKDIR /work/
-COPY app/ .
-
-# STAGE 2
+# STAGE 2: Final
 FROM alpine:latest
 
 WORKDIR /work
 
-COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform 
-COPY --from=builder /usr/local/bin/aws /usr/local/bin/aws
+COPY app/ .
+
+# Copiando binários e arquivos da STAGE 1
+COPY --from=builder /usr/local/bin/terraform /usr/local/bin/terraform
 COPY --from=builder /work /work
 
+RUN apk add --no-cache aws-cli
+
+RUN apk add --no-cache python3 py3-pip
+
+# Copiando credenciais da AWS
 ARG AWS_ACCESS_KEY_ID
 ARG AWS_SECRET_ACCESS_KEY
 ARG AWS_DEFAULT_REGION
+ARG AWS_SESSION_TOKEN
 
-# Configurar credenciais AWS
+RUN mkdir aws
+RUN touch aws/credentials
 RUN echo "[default]" >> aws/credentials && \
-    echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID}" >> aws/credentials && \
-    echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY}" >> aws/credentials
+    echo "aws_access_key_id = $AWS_ACCESS_KEY_ID" >> aws/credentials && \
+    echo "aws_secret_access_key = $AWS_SECRET_ACCESS_KEY" >> aws/credentials && \
+    echo "aws_session_token = $AWS_SESSION_TOKEN" >> aws/credentials
 
-# Instalar Python e pip
-RUN apk update && \
-    apk add --no-cache python3 py3-pip
+# Instalando dependências Python
+RUN apk add --no-cache python3 py3-pip
 
-# Instalar os requisitos mínimos (requirements.txt) com a opção --ignore-installed
-RUN python3 -m pip install --no-cache-dir --ignore-installed -r requirements.txt --break-system-packages
+RUN pip3 install --no-cache-dir --user --break-system-packages -r requirements.txt
 
+RUN terraform init
+
+# Expondo a porta 8080
 EXPOSE 8080
 
-# Rodar a aplicação
+# Executando a aplicação
 CMD ["python3", "app.py"]

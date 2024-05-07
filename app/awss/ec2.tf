@@ -1,48 +1,40 @@
-terraform {
-  required_version = ">=1.0.0" # Versão do Terraform
+provider "aws" {
+ region = "us-east-1"
+ shared_config_files=["./aws/config"]
+ shared_credentials_files=["./aws/config"]
+}
 
-  # Provedores Utilizados
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "5.42.0" # Versão do AWS no Terraform
-    }
+resource "aws_instance" "ec2_instance" {
+  ami           = "ami-07caf09b362be10b8"
+  instance_type = "t2.micro"
+  subnet_id     = "subnet-0bc7cc7fdd4db07a1" # ID da Subnet
+  vpc_security_group_ids = ["${aws_security_group.instance_sg.id}"]
+
+  key_name = "vockey"
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum update -y
+              yum install -y docker
+              service docker start
+              usermod -a -G docker ec2-user
+              docker push gabiiramos1309/apicontainer:${var.github_sha}
+              docker run -d -p 8080:8080 --name api-container gabiiramos1309/apicontainer:${var.github_sha}
+              EOF
+
+  tags = {
+    Name = "EC2_Instance-alpine-5"
   }
 }
 
-provider "aws" {
-  region           = "us-east-1"
-  access_key       = var.AWS_ACCESS_KEY_ID
-  secret_key       = var.AWS_SECRET_ACCESS_KEY
-  token            = var.AWS_SESSION_TOKEN
-}
-
-variable "AWS_ACCESS_KEY_ID" {
-  description = "The AWS access key ID"
-}
-
-variable "AWS_SECRET_ACCESS_KEY" {
-  description = "The AWS secret access key"
-}
-
-variable "AWS_SESSION_TOKEN" {
-  description = "The AWS session token"
-}
-
-resource "aws_security_group" "grupoapi" {
-  name        = "grupoapi"
-  description = "Security group for EC2 instance"
+resource "aws_security_group" "instance_sg" {
+  name        = "instance_sg-5"
+  description = "Allow SSH and HTTP inbound traffic"
+  vpc_id      = "vpc-0fa43a6329f1ad069"
 
   ingress {
     from_port   = 22
     to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -62,31 +54,8 @@ resource "aws_security_group" "grupoapi" {
   }
 }
 
-resource "aws_instance" "linux" {
-  ami                         = "ami-058bd2d568351da34" # Debian
-  instance_type               = "t2.micro"
-  key_name                    = "vockey" # Estamos ultilizando a chave padão da aws
-  vpc_security_group_ids      = [aws_security_group.grupoapi.id]  # ID do grupo de segurança específico
-  subnet_id                   = "subnet-0d823ddb2dcf69349" # Não se esqueca se subistituir para a sua subrede
-  associate_public_ip_address = true
+variable "github_sha" {}
 
-  user_data = <<-EOF
-                #!/bin/bash
-                # Atualizar os pacotes de instalação
-                sudo apt update -y
-                # Instalar o Docker
-                sudo apt install docker.io -y
-                # Iniciar o Docker
-                sudo systemctl start docker
-                # Adicionar o usuário ec2-user ao grupo docker para executar comandos docker sem sudo
-                sudo usermod -aG docker ec2-user
-                # Baixar a imagem do Docker Hub
-                sudo docker pull euumarceloo/portifolio:latest 
-                # Iniciar o contêiner
-                sudo docker run -d -p 8080:8080 --name apicontainer euumarceloo/portifolio
-                EOF
-
-  tags = {
-    Name = "EC2 CI/CD"
-  }
+output "public_ip" {
+  value = aws_instance.ec2_instance.public_ip
 }
